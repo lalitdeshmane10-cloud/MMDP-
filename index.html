@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bansuri Studio · Live Sargam</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">BANSURI STUDIO</div>
+      <h1>Live Sargam</h1>
+      <p>Set your Sa, then play a note to see where it lands.</p>
+      <a href="/record">Record training samples</a>
+    </header>
+    <div class="grid">
+      <section class="card readout" aria-labelledby="heard">
+        <h2 id="heard">Heard</h2>
+        <div id="note" class="note">—</div>
+        <div id="register" class="muted">Waiting for input</div>
+        <div class="tuning" aria-hidden="true"><i id="needle" hidden></i></div>
+        <div id="tuning-label" class="muted">Tuning</div>
+      </section>
+      <section class="card controls" aria-labelledby="setup">
+        <h2 id="setup">Microphone &amp; Sa</h2>
+        <label for="level">Input level</label>
+        <meter id="level" min="0" max="1" value="0"></meter>
+        <div class="actions">
+          <button id="mic">Start microphone</button>
+          <button id="calibrate" class="secondary" disabled>Set Sa</button>
+        </div>
+        <p id="status" role="status">Start the microphone to begin.</p>
+        <span id="reference" class="muted">Sa is unset</span>
+      </section>
+    </div>
+    <section class="card trace" aria-labelledby="trace-title">
+      <h2 id="trace-title">Steady notes</h2>
+      <div id="intervals" aria-label="Recent sustained notes"></div>
+    </section>
+    <section class="card trace">
+      <h2>Fingering camera</h2>
+      <p id="camera-status">Frame your hands in the center. Motion helps confirm note changes.</p>
+      <video id="hands" muted playsinline hidden></video>
+      <button id="camera" class="secondary">Start camera</button>
+    </section>
+  </main>
+  <script type="module" src="app.mjs"></script>
+</body>
+</html>

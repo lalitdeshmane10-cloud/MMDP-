@@ -1,0 +1,3 @@
+{'model': 'resnet18_crop', 'validation': 0.28158390522003174, 'test': 0.10072815418243408, 'n_test': 824}
+{'model': 'resnet50_crop', 'validation': 0.2432432472705841, 'test': 0.12378640472888947, 'n_test': 824}
+{'model': 'resnet50_full', 'validation': 0.0810810774564743, 'test': 0.0776699036359787, 'n_test': 824}

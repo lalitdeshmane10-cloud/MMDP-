@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Record samples · Bansuri Studio</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="brand">BANSURI STUDIO</div>
+      <h1>Record a swara</h1>
+      <p>Frame the flute and both hands, then hold the prompted note.</p>
+      <a href="/">Live Sargam tuner</a>
+    </header>
+    <div class="grid">
+      <section class="card">
+        <div class="video-frame"><video id="preview" muted playsinline autoplay></video><span id="placeholder">Camera preview</span></div>
+        <div class="actions"><button id="camera">Start camera &amp; mic</button><button id="stop-devices" class="secondary" disabled>Stop devices</button></div>
+        <p id="device-status" role="status">Camera and microphone are off.</p>
+      </section>
+      <section class="card">
+        <h2>Play</h2>
+        <div id="prompt" class="note">Sa</div>
+        <p class="muted">Hold the swara steadily. Record different fingerings as separate takes.</p>
+        <div class="record-fields">
+          <label>Swara<select id="swara"></select></label>
+          <label>Player ID <span class="muted">optional</span><input id="player" placeholder="e.g. player-01"></label>
+          <label>Flute / Sa <span class="muted">optional</span><input id="flute" placeholder="e.g. C natural"></label>
+        </div>
+        <div class="actions record-actions"><button id="record" disabled>Start recording</button><button id="next" class="secondary">Next swara</button></div>
+        <p id="record-status" role="status">Start your camera and microphone to record.</p>
+      </section>
+    </div>
+    <section class="card trace">
+      <h2>Fingering for this take</h2>
+      <p class="muted">Optional. Number holes from the blowing end. Record each hole as played, including holes farther from the mouth. Leave uncertain holes as unknown.</p>
+      <div id="holes" class="holes"></div>
+      <label class="take-notes">Take notes <span class="muted">optional</span><input id="notes" placeholder="e.g. alternate fingering, soft attack"></label>
+    </section>
+    <section class="card trace">
+      <h2>Recordings</h2>
+      <p class="muted">Download each video with its matching label file. Recordings stay in this page until downloaded.</p>
+      <div id="takes"><p class="muted">No recordings yet.</p></div>
+    </section>
+  </main>
+  <script type="module" src="record.mjs"></script>
+</body>
+</html>
