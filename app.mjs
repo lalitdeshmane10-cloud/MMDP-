@@ -10,13 +10,14 @@ let intervalStart = 0;
 let nextUpdate = 0;
 let motionUntil = 0;
 let session;
-let sa;
+let sa = 440;
 let pendingCalibration;
 let candidate;
 let count = 0;
 let heard;
 
 function display(note, emptyState) {
+  document.dispatchEvent(new CustomEvent('sargam-reading', { detail: note }));
   byId('note').textContent = note?.note ?? '—';
   byId('register').textContent = note?.register ?? emptyState;
   const needle = byId('needle');
@@ -36,28 +37,33 @@ function analyze({ hz, rms, time }) {
   byId('level').value = Math.min(1, rms * 5);
   if (pendingCalibration) {
     const calibration = pendingCalibration;
-    calibration.start ??= time;
-    if (hz) calibration.samples.push(hz);
-    if (time - calibration.start < 2) return;
-
-    const sorted = calibration.samples.sort((a, b) => a - b);
-    const middle = sorted[Math.floor(sorted.length / 2)];
-    const steady = sorted.filter((sample) => Math.abs(1200 * Math.log2(sample / middle)) < 35);
-    if (steady.length >= 70 && steady.length >= sorted.length * 0.8) {
-      sa = steady[Math.floor(steady.length / 2)];
-      intervals.replaceChildren();
-      resetReading();
-      reference.textContent = 'Sa calibrated';
-      status.textContent = 'Play any note to check its Sargam.';
-    } else {
-      status.textContent = 'Try again with one steady Sa held for two seconds.';
+    if (!hz || rms < .003) {
+      calibration.samples.length = 0;
+      status.textContent = 'Listening for Sa - play when ready';
+      return;
     }
+    const samples = calibration.samples;
+    if (samples.length && Math.abs(1200 * Math.log2(hz / samples[0])) > 45) samples.length = 0;
+    if (!samples.length) calibration.start = time;
+    samples.push(hz);
+    status.textContent = 'Hold your Sa steady...';
+    if (time - calibration.start < .85) return;
+    samples.sort((a,b) => a-b);
+    sa = samples[Math.floor(samples.length/2)];
+    intervals.replaceChildren();
+    resetReading();
+    reference.textContent = 'Measured Sa ' + Math.round(sa) + ' Hz';
+    status.textContent = 'Play any note to check its Sargam.';
     pendingCalibration = undefined;
     calibrate.disabled = false;
+    if (sa) document.dispatchEvent(new CustomEvent('sa-ready', { detail: sa }));
   }
   if (!sa) return;
 
   const reading = hz ? sargam(hz, sa) : undefined;
+  document.dispatchEvent(new CustomEvent('pitch-frame', {
+    detail: { position: reading?.position, at: performance.now() - Math.max(0, session.audio.currentTime - time) * 1000 }
+  }));
   const step = reading?.step;
   if (candidate !== step) {
     candidate = step;
@@ -89,7 +95,7 @@ function analyze({ hz, rms, time }) {
 calibrate.addEventListener('click', () => {
   pendingCalibration = { samples: [] };
   calibrate.disabled = true;
-  status.textContent = 'Hold your madhya Sa for two seconds.';
+  status.textContent = 'Listening for Sa - play when ready';
   resetReading();
   display(undefined, 'Calibrating Sa');
 });
@@ -97,6 +103,7 @@ calibrate.addEventListener('click', () => {
 async function stop() {
   const active = session;
   session = undefined;
+  document.dispatchEvent(new Event('mic-stopped'));
   active.stream?.getTracks().forEach((track) => track.stop());
   if (active.processor) {
     active.processor.port.onmessage = null;
@@ -158,6 +165,19 @@ patch.height = 24;
 const pixels = patch.getContext('2d', { willReadFrequently: true });
 let previous;
 let sampler;
+const devices = byId('device');
+document.addEventListener('set-flute-key', event => {
+  sa = event.detail;
+  resetReading();
+  display(undefined, 'Listening');
+  pendingCalibration = undefined;
+  calibrate.disabled = !session;
+  reference.textContent = 'Sa ' + Math.round(sa) + ' Hz';
+});
+addEventListener('pagehide', () => {
+  stopCamera();
+  if (session) void stop();
+});
 
 function sampleHands() {
   if (video.readyState < 2) return;
@@ -192,12 +212,22 @@ camera.onclick = async () => {
       stopCamera();
       byId('camera-status').textContent = 'Camera stopped.';
     } else {
-      video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = await navigator.mediaDevices.getUserMedia({
+        video: devices.value ? { deviceId: { exact: devices.value } } : true,
+        audio: false
+      });
       await video.play();
       video.hidden = false;
       camera.textContent = 'Stop camera';
       byId('camera-status').textContent = 'Center your hands in the preview. Movement briefly speeds up confirmation of a new pitch.';
       sampler = setInterval(sampleHands, 80);
+      const current = video.srcObject.getVideoTracks()[0]?.getSettings().deviceId;
+      const cameras = await navigator.mediaDevices.enumerateDevices();
+      devices.replaceChildren(new Option('Default camera', ''));
+      for (const device of cameras.filter(item => item.kind === 'videoinput')) {
+        devices.add(new Option(device.label || 'Camera ' + devices.length, device.deviceId));
+      }
+      if ([...devices.options].some(option => option.value === current)) devices.value = current;
     }
   } catch {
     stopCamera();
@@ -206,3 +236,6 @@ camera.onclick = async () => {
     camera.disabled = false;
   }
 };
+
+devices.onchange = () => { if (video.srcObject && !camera.disabled) { stopCamera(); camera.click(); } };
+
