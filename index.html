@@ -4,7 +4,7 @@
 <body>
 <main class="practice-shell">
 <header class="studio-top"><div><div class="brand">BANSURI STUDIO</div><h1>Practice room</h1></div><a href="/record">Record samples</a></header>
-<div class="session-bar"><label>Song<select id="song"></select></label><label>Flute key<select id="key"></select></label><label>Camera<select id="device"><option value="">Default camera</option></select></label><button id="camera" class="secondary">Start camera</button></div>
+<div class="session-bar"><label>Mode<select id="mode"><option value="check">Note checker</option><option value="flow">Flow performance</option><option value="listen">Timed play-along</option></select></label><label>Song<select id="song"></select></label><label>Flute key<select id="key"></select></label><label>Practice octave<select id="octave"><option value="0">As arranged</option><option value="-1">One lower</option><option value="-2">Two lower</option></select></label><label>Camera<select id="device"><option value="">Default camera</option></select></label><button id="camera" class="secondary">Start camera</button></div>
 <section class="practice-stage" aria-label="Live practice">
 <div class="lesson-heading"><h2 id="song-title"></h2><span id="section-count"></span></div>
 <div id="phrase" aria-label="Section notes"></div>
@@ -16,10 +16,16 @@
 <div class="transport">
 <div class="actions"><button id="play">Start practice</button><button id="restart" class="secondary">Replay</button><button id="reference-audio" class="secondary" aria-pressed="false">Reference off</button><button id="loop" class="secondary">Set loop start</button><button id="metronome" class="secondary" aria-pressed="false">Metronome</button></div>
 <label class="progress">Position <output id="elapsed">0:00</output><input type="range" id="seek" min="0" step=".01" value="0"></label>
-<label>Mode<select id="mode"><option value="check">Note checker</option><option value="listen">Timed play-along</option></select></label><label>Reference sound<select id="voice"><option value="generated">Generated flute · selected key</option><option value="shifted">Recording · selected key</option><option value="original">Recording · original key</option></select></label><label>Speed<select id="speed"><option value=".5">0.5×</option><option value=".75" selected>0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option></select></label><label>Volume<input id="volume" type="range" min="0" max="1" step=".01" value=".45"></label>
+<label>Reference sound<select id="voice"><option value="generated">Generated flute · selected key</option><option value="shifted">Recording · selected key</option><option value="original">Recording · original key</option></select></label><label>Speed<select id="speed"><option value=".5">0.5×</option><option value=".75" selected>0.75×</option><option value="1">1×</option><option value="1.25">1.25×</option></select></label><label>Volume<input id="volume" type="range" min="0" max="1" step=".01" value=".45"></label>
 </div>
-<div class="device-bar"><button id="mic" class="secondary">Start microphone</button><button id="calibrate" class="secondary" disabled>Set Sa</button><span id="reference">Sa from flute key</span><meter id="level" aria-label="Microphone input" min="0" max="1" value="0"></meter><span id="status" role="status">Microphone off</span></div>
-<details><summary>Fingering and song information</summary><div id="fingering"></div><div id="song-info"></div><p id="distribution"></p><p id="tuning-label"></p><div id="intervals"></div><i id="needle" hidden></i></details>
+<section id="flow" hidden><h2>Flow performance</h2>
+<p>Start your microphone and play the piece at your own pace. Finish to compare the order of your notes.</p>
+<button id="flow-start">Start take</button> <button id="flow-finish" disabled>Finish take</button>
+<p id="flow-result" role="status"></p><p>Blue reference · mint microphone</p><canvas id="overlay" aria-label="Reference and microphone spectrum"></canvas><output id="pitch-hint"></output><label>Take offset (seconds)<input id="align-offset" type="number" value="0" step=".05"></label><label>Take time scale<input id="align-scale" type="number" value="1" min=".1" max="8" step=".05"></label><canvas id="flow-chart" aria-label="Aligned reference and played pitches"></canvas>
+<p>Your take · drag to choose the point to replay</p><canvas id="take-chart" aria-label="Pitch over take time and replacement point"></canvas><label>Resume from <output id="cut-time">0.0 s</output><input id="flow-cut" type="range" min="0" max="0" step=".01" value="0"></label>
+<button id="flow-retry" disabled>Replace from here</button></section>
+<div class="device-bar"><button id="mic" class="secondary">Start microphone</button><button id="calibrate" class="secondary" disabled>Set Sa</button><progress id="sa-progress" aria-label="Sa capture" max="1" value="0"></progress><span id="reference">Sa from flute key</span><meter id="level" aria-label="Microphone input" min="0" max="1" value="0"></meter><span id="status" role="status">Microphone off</span></div>
+<div class="tool-drawer"><details><summary>Fingering and song information</summary><div id="fingering"></div><div id="song-info"></div><p id="distribution"></p><p id="tuning-label"></p><div id="intervals"></div><i id="needle" hidden></i></details>
 <details><summary>My flute’s playable range</summary>
 <p>Choose your flute key above, then use Set Sa to measure your middle Sa. Start the microphone to capture either endpoint, or enter frequencies directly.</p>
 <div class="range-fields"><label>Lowest comfortable note (Hz)<input id="range-low" type="number" min="70" max="2200" step="any"></label><button id="capture-low" type="button">Capture low note</button></div>
@@ -27,11 +33,12 @@
 <div class="range-fields"><label>Highest comfortable note (Hz)<input id="range-high" type="number" min="70" max="2200" step="any"></label><button id="capture-high" type="button">Capture high note</button></div>
 <p>Play up your upper-register scale and hold the highest note you can repeat comfortably. Use its usual fingering and a focused air stream. Opening every hole gives a particular swara; it does not set the upper limit.</p>
 <button id="apply-range" type="button">Use this range</button> <button id="clear-range" type="button">Use standard arrangement</button>
-<p id="range-status" role="status">Standard arrangement active.</p></details>
-<details><summary>Practice assistant</summary><form id="assistant-form">
-<label>Command or change request<input id="command" placeholder="Set key to A, half speed, larger notes…" required></label>
-<button type="button" id="dictate">Dictate</button> <button>Apply or save request</button>
-<p id="assistant-status" role="status"></p><ul id="requests"></ul></form></details>
+<progress id="range-progress" aria-label="Range capture" max="1" value="0"></progress><p id="range-status" role="status">Standard arrangement active.</p></details>
+
+<details><summary>Import a recording as Sargam</summary><form id="import-form">
+<label>Audio recording<input id="music-file" type="file" accept="audio/*" required></label>
+<label>Recording’s Sa<select id="source-sa"><option value="auto">Estimate from melody</option></select></label>
+<button id="convert">Transcribe melody</button><p id="import-status" role="status"></p></form></details>
 <details><summary>Create a song</summary><form id="creator"><label>Title<input id="custom-title" required maxlength="80"></label><label>Tempo in BPM<input id="bpm" type="number" min="25" max="300" value="72" required></label><label>Sargam notation<textarea id="notation" required placeholder="S R G M | P D N S'"></textarea></label><p>Use r g d n for komal, m for tivra Ma, a dot for the lower register, an apostrophe for the upper register, and a dash to sustain. Use “rest” for a pause.</p><button>Save and select</button><p id="creator-status" role="status"></p></form></details>
-</main><script type="module" src="practice.mjs"></script><script type="module" src="app.mjs"></script><script type="module" src="assistant.mjs"></script></body>
+</div></main><script type="module" src="practice.mjs"></script><script type="module" src="app.mjs"></script></body>
 </html>

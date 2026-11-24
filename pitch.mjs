@@ -14,6 +14,7 @@ export function createTracker(rate, size) {
   const maxLag = Math.ceil(rate / 70);
   const minLag = Math.floor(rate / 2200);
   const difference = new Float32Array(maxLag + 2);
+  const residual = new Float64Array(maxLag + 2);
   return (samples) => {
     let mean = 0;
     for (const sample of samples) mean += sample / size;
@@ -30,6 +31,7 @@ export function createTracker(rate, size) {
         const delta = samples[i] - samples[i + lag];
         sum += delta * delta;
       }
+      residual[lag] = sum;
       total += sum;
       difference[lag] = total ? sum * lag / total : 1;
     }
@@ -38,7 +40,9 @@ export function createTracker(rate, size) {
       const left = difference[lag - 1];
       const right = difference[lag + 1];
       if (center >= 0.15 || center > left || center >= right) continue;
-      const shift = (left - right) / (2 * (left - 2 * center + right));
+      // Use the unnormalized periodicity minimum for sub-sample refinement.
+      const curvature = residual[lag-1]-2*residual[lag]+residual[lag+1];
+      const shift = curvature>0 ? Math.max(-.5,Math.min(.5,(residual[lag-1]-residual[lag+1])/(2*curvature))) : 0;
       const hz = rate / (lag + shift);
       if (hz >= 70 && hz <= 2200) return { hz, rms, confidence: 1 - center };
     }

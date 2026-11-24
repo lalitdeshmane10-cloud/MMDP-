@@ -1,3 +1,5 @@
+import { setupFlow } from './flow.mjs';
+import { setupImport } from './import-song.mjs';
 import krishna from './krishna-score.mjs';
 import library from './practice-library.mjs';
 import { notes, sargam } from './pitch.mjs';
@@ -22,9 +24,13 @@ let sample, audio, output, tone, toneIndex, loopStart, loopEnd, beat;
 const speed = () => Number(get('speed').value);
 
 for (const [i, label] of 'C C♯ D D♯ E F F♯ G G♯ A A♯ B'.split(' ').entries()) key.add(new Option(label,i));
+key.add(new Option('Custom · measured range','custom'));
 key.value = '9';
 function selectKey() {
-  sa = 440*2**((Number(key.value)-9)/12);
+  if(key.value==='custom'){
+    if(!range){get('range-status').closest('details').open=true;rangeMessage('Capture both endpoints, then use this range. Low note must be all-holes-closed low Pa.');return;}
+    sa=range.low*2**(5/12);
+  } else sa = 440*2**((Number(key.value)-9)/12);
   document.dispatchEvent(new CustomEvent('set-flute-key',{detail:sa}));
   active = null;
   resetGate();
@@ -54,7 +60,7 @@ const recorded = () => voice.value !== 'generated' && enabled('reference-audio')
 function syncOriginal() {
   original.pause();
   if (!running || checking() || !recorded()) return;
-  const cents = Math.round(1200*Math.log2(sa/318));
+  const cents = Math.round(1200*(Math.log2(sa/318)+Number(get('octave').value)));
   const path = voice.value === 'shifted' ? '/transposed.wav?cents='+cents : '/krishna.wav';
   if (!original.src.endsWith(path)) original.src = path;
   original.currentTime = position + .15;
@@ -70,9 +76,9 @@ function syncOriginal() {
 voice.onchange = () => { stopTone(); syncOriginal(); };
 let range, capture;
 const rangeMessage = text => { get('range-status').textContent = text; };
-function arrangeInRange(source, lowHz, highHz) {
-  const bottom = Math.ceil(12*Math.log2(lowHz/sa)-1e-8);
-  const top = Math.floor(12*Math.log2(highHz/sa)+1e-8);
+function arrangeInRange(source, lowHz, highHz, tonic=sa) {
+  const bottom = Math.ceil(12*Math.log2(lowHz/tonic)-1e-8);
+  const top = Math.floor(12*Math.log2(highHz/tonic)+1e-8);
   const result = [];
   const boundaries = source.sections ?? [0];
   for (const [i,start] of boundaries.entries()) {
@@ -98,18 +104,19 @@ function applyRange() {
   if (!(low>=70 && high<=2200 && low<high)) {
     rangeMessage('Enter a low and a higher frequency between 70 and 2200 Hz.');return;
   }
-  try { arrangeInRange(songs[Number(song.value)],low,high); }
+  try { arrangeInRange(songs[Number(song.value)],low,high,key.value==="custom"?low*2**(5/12):sa); }
   catch (error) { rangeMessage(error.message);return; }
   range={low,high}; capture=undefined; voice.value="generated";
-  selectSong();
+  if(key.value==='custom')selectKey();else selectSong();
 }
 get('apply-range').onclick=applyRange;
 get('clear-range').onclick=()=>{
-  capture=range=undefined;selectSong();rangeMessage('Standard arrangement active.');
+  capture=range=undefined;if(key.value==="custom"){key.value="9";selectKey();}selectSong();rangeMessage('Standard arrangement active.');
 };
 for (const end of ['low','high']) get('capture-'+end).onclick=()=>{
   if (get('calibrate').disabled) {rangeMessage('Start the microphone and finish Set Sa before capturing.');return;}
   pause();
+  get('range-progress').value=0;
   capture={end, samples:[]};
   rangeMessage('Listening for your '+end+' note. Hold it steady when ready.');
 };
@@ -117,17 +124,18 @@ function measureEndpoint(raw,at) {
   const {samples,end} = capture;
   if (!Number.isFinite(raw) || at-capture.last>60 || Math.abs(raw-samples[0])>.45) samples.length=0;
   capture.last=at;
-  if (!Number.isFinite(raw)) return;
+  if (!Number.isFinite(raw)) {get('range-progress').value=0;return;}
   if (!samples.length) capture.start=at;
   samples.push(raw);
-  if (at-capture.start<650) return;
+  get('range-progress').value=(at-capture.start)/2000;
+  if (at-capture.start<2000) return;
   const median=samples.sort((a,b)=>a-b)[Math.floor(samples.length/2)];
   const hz=sa*2**(median/12);
   get('range-'+end).value=hz.toFixed(1);
   rangeMessage('Captured '+end+' note at '+hz.toFixed(1)+' Hz. Choose Use this range when both limits are ready.');
   capture=undefined;
 }
-function selectSong() {
+function selectSong(keepTake=false) {
   const source = songs[Number(song.value)];
   const arranged = [];
   const boundaries = source.sections ?? [0];
@@ -148,9 +156,10 @@ function selectSong() {
       range=undefined;
     }
   }
-  score = {...source,notes:targets};
+  score = {...source,notes:targets.map(([a,b,k])=>[a,b,k+12*Number(get('octave').value)])};
   active = null;
   pause();
+  if(keepTake!==true)flow.reset();
   passed.clear();
   phraseKey = undefined;
   for (const option of voice.options) option.disabled = option.value !== "generated" && source !== krishna;
@@ -172,6 +181,7 @@ function selectSong() {
   }
 }
 song.onchange = selectSong;
+get('octave').onchange=()=>{const time=position;selectSong(true);jump(time);flow.repaint();};
 
 function stopTone() {
   if (tone) { try { tone.stop(); } catch {} }
@@ -198,6 +208,7 @@ function pause() {
   stopTone();
   play.textContent = position >= score.duration ? 'Play again' : position ? 'Resume' : 'Start practice';
 }
+let fluteSample;
 async function audioReady() {
   if (!audio) {
     audio = new AudioContext();
@@ -206,21 +217,33 @@ async function audioReady() {
     output.connect(audio.destination);
   }
   await audio.resume();
+  if (!fluteSample && voice.value==='generated' && enabled('reference-audio')) {
+    try { fluteSample=await audio.decodeAudioData(await (await fetch('/flute-loop.wav')).arrayBuffer()); }
+    catch { /* The synthesized voice also works offline without the sample. */ }
+  }
 }
 const enabled = id => get(id).getAttribute('aria-pressed') === 'true';
 for (const id of ['reference-audio','metronome']) get(id).onclick = async () => {
-  const next = !enabled(id);
-  if (id === 'reference-audio' && next && checking()) {
-    get('mode').value = 'listen';
-    get('mode').onchange();
-  }
-  try { if (next) await audioReady(); } catch { get('match').textContent = 'Playback unavailable'; return; }
-  get(id).setAttribute('aria-pressed',String(next));
-  if (id === 'reference-audio') {
-    get(id).textContent = next ? 'Reference on' : 'Reference off';
-    stopTone();
-    syncOriginal();
-  }
+  const button=get(id);
+  const next=!enabled(id);
+  button.disabled=true;
+  try {
+    if(id==='reference-audio' && next && checking()){
+      get('mode').value='listen';get('mode').onchange();
+    }
+    button.setAttribute('aria-pressed',String(next));
+    if(next) await audioReady();
+    if(id==='reference-audio'){
+      stopTone();
+      if(next && !running) await play.onclick();
+      else syncOriginal();
+    } else beat=undefined;
+    button.textContent=(id==='metronome'?'Metronome':'Reference')+(next?' on':' off');
+  } catch {
+    button.setAttribute('aria-pressed','false');
+    button.textContent=(id==='metronome'?'Metronome':'Reference')+' off';
+    get('status').textContent='Audio output unavailable. Check the playback device and try again.';
+  } finally {button.disabled=false;}
 };
 get('volume').oninput = () => { original.volume = Number(get('volume').value); if (output) output.gain.value = Number(get('volume').value)*.24; };
 play.onclick = async () => {
@@ -250,6 +273,17 @@ get('loop').onclick = () => {
 };
 function sound(hz,duration,type) {
   const t = audio.currentTime;
+  if(type==='flute' && fluteSample){
+    const source=audio.createBufferSource(),gain=audio.createGain();
+    source.buffer=fluteSample;source.loop=true;
+    source.playbackRate.value=hz/1266.6015625;
+    gain.gain.setValueAtTime(.001,t);
+    gain.gain.linearRampToValueAtTime(.78,t+Math.min(.045,duration/2));
+    gain.gain.setTargetAtTime(.60,t+duration*.6,.08);
+    gain.gain.setTargetAtTime(.001,t+duration,.016);
+    source.connect(gain).connect(output);source.start();source.stop(t+duration+.08);
+    source.onended=()=>{source.disconnect();gain.disconnect();};return source;
+  }
   const oscillator = audio.createOscillator();
   const envelope = audio.createGain();
   if (type === 'flute') {
@@ -330,7 +364,8 @@ function renderPhrase(index) {
   get('section-count').textContent = 'Section '+(section+1)+' / '+sections.length;
   const tiles = score.notes.slice(sections[section],sections[section+1]).map((note,offset)=>{
     const i = sections[section]+offset;
-    const tile = document.createElement('span');
+    const tile = document.createElement('button');
+    tile.type='button';tile.onclick=()=>jump(note[0]);
     const octave = Math.floor(note[2]/12);
     tile.textContent = name(note[2]) + (octave>0 ? '′'.repeat(octave) : '̣'.repeat(-octave));
     tile.style.width = Math.max(3,(note[1]-note[0])*9)+'rem';
@@ -342,6 +377,7 @@ function renderPhrase(index) {
   get('phrase').replaceChildren(...tiles);
 }
 get('mode').onchange = () => {
+  flow.modeChanged();
   pause();
   if (checking()) {
     get('reference-audio').setAttribute('aria-pressed','false');
@@ -371,12 +407,11 @@ function draw(time) {
     Math.abs(cents)<=60 ? 'Hold steady' : cents<0 ? 'Go higher' : 'Go lower';
   if (get('match').textContent!==feedback) get('match').textContent=feedback;
   if (running && !checking() && enabled('reference-audio') && !recorded() && index!==toneIndex) {
-    stopTone();
     toneIndex=index;
     if (note) tone=sound(sa*2**(step/12),(note[1]-position)/speed(),'flute');
   }
-  const nextBeat=Math.floor((checking() ? time/1000*speed() : position)*(score.bpm||72)/60);
-  if(running && enabled('metronome') && nextBeat!==beat) {beat=nextBeat;sound(880,.04,'triangle');}
+  const nextBeat=Math.floor(((!running || checking()) ? time/1000*speed() : position)*(score.bpm||72)/60);
+  if(audio?.state==='running' && get('mode').value!=='flow' && enabled('metronome') && nextBeat!==beat) {beat=nextBeat;sound(880,.04,'triangle');}
   seek.value=position;
   get('elapsed').textContent=format(position)+' / '+format(score.duration);
   renderPhrase(index<0 ? (score.notes.findIndex(n=>n[0]>position)+score.notes.length)%score.notes.length : index);
@@ -411,6 +446,7 @@ get('creator').onsubmit = event => {
   get('creator-status').textContent='Song saved';
 };
 document.addEventListener('keydown',event=>{
+  if (get('mode').value==='flow') return;
   if (event.target.closest('button,input,select,textarea,summary') || event.altKey || event.ctrlKey || event.metaKey) return;
   if (event.code==='Space') { event.preventDefault(); void play.onclick(); }
   if (event.key==='ArrowLeft'||event.key==='ArrowRight') {event.preventDefault();jump(position+(event.key==='ArrowLeft'?-1:1)*(event.shiftKey?10:5));}
@@ -418,5 +454,11 @@ document.addEventListener('keydown',event=>{
   if (event.key.toLowerCase()==='m') get('metronome').click();
 });
 addEventListener('pagehide',()=>{cancelAnimationFrame(animation);pause();if(audio) void audio.close();});
+const flow = setupFlow(() => score,()=>songs[Number(song.value)],krishna);
+setupImport(item => {
+  songs.push(item);
+  loadSongs(songs.length-1);
+  localStorage.setItem('studio-songs',JSON.stringify(songs.slice(library.length+1)));
+});
 loadSongs(0);
 animation=requestAnimationFrame(draw);

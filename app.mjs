@@ -38,7 +38,7 @@ function analyze({ hz, rms, time }) {
   if (pendingCalibration) {
     const calibration = pendingCalibration;
     if (!hz || rms < .003) {
-      calibration.samples.length = 0;
+      calibration.samples.length = 0;byId('sa-progress').value=0;
       status.textContent = 'Listening for Sa - play when ready';
       return;
     }
@@ -47,7 +47,8 @@ function analyze({ hz, rms, time }) {
     if (!samples.length) calibration.start = time;
     samples.push(hz);
     status.textContent = 'Hold your Sa steady...';
-    if (time - calibration.start < .85) return;
+    byId('sa-progress').value=(time-calibration.start)/2;
+    if (time - calibration.start < 2) return;
     samples.sort((a,b) => a-b);
     sa = samples[Math.floor(samples.length/2)];
     intervals.replaceChildren();
@@ -93,6 +94,7 @@ function analyze({ hz, rms, time }) {
 }
 
 calibrate.addEventListener('click', () => {
+  byId('sa-progress').value=0;
   pendingCalibration = { samples: [] };
   calibrate.disabled = true;
   status.textContent = 'Listening for Sa - play when ready';
@@ -104,6 +106,7 @@ async function stop() {
   const active = session;
   session = undefined;
   document.dispatchEvent(new Event('mic-stopped'));
+  clearInterval(active.spectrumTimer);
   active.stream?.getTracks().forEach((track) => track.stop());
   if (active.processor) {
     active.processor.port.onmessage = null;
@@ -141,7 +144,16 @@ mic.addEventListener('click', async () => {
     const processor = new AudioWorkletNode(audio, 'pitch-processor');
     session.processor = processor;
     processor.port.onmessage = ({ data }) => analyze(data);
-    audio.createMediaStreamSource(session.stream).connect(processor);
+    const input=audio.createMediaStreamSource(session.stream);
+    input.connect(processor);
+    const analyser=audio.createAnalyser();analyser.fftSize=4096;input.connect(analyser);
+    const bins=new Uint8Array(analyser.frequencyBinCount);
+    session.spectrumTimer=setInterval(()=>{
+      if(byId('flow').hidden)return;
+      analyser.getByteFrequencyData(bins);
+      const rows=Uint8Array.from({length:84},(_,i)=>bins[Math.round(sa*2**((59-i)/12)*4096/audio.sampleRate)]||0);
+      document.dispatchEvent(new CustomEvent('spectrum-frame',{detail:rows}));
+    },50);
     processor.connect(audio.destination);
     mic.textContent = 'Stop microphone';
     calibrate.disabled = false;

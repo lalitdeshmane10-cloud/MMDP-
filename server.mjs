@@ -9,11 +9,13 @@ const localPath = path => fileURLToPath(new URL(path, import.meta.url));
 let lastRender;
 const files = new Map([
   ['/', ['index.html', 'text/html']],
+  ['/flute-loop.wav',['flute-loop.wav','audio/wav']],
+  ['/reference-spectrum.png',['reference-spectrum.png','image/png']],
   ['/krishna.wav', ['datasets/reels_data/audio/krishna_theme.wav', 'audio/wav']],
   ['/record', ['record.html', 'text/html']],
   ['/record.html', ['record.html', 'text/html']],
   ['/style.css', ['style.css', 'text/css']],
-  ...['app', 'pitch', 'pitch-worklet', 'record', 'practice', 'krishna-score', 'practice-library','assistant'].map((name) => ['/' + name + '.mjs', [name + '.mjs', 'text/javascript']])
+  ...['app', 'pitch', 'pitch-worklet', 'record', 'practice', 'krishna-score', 'practice-library','assistant','flow','import-song','melody-worker'].map((name) => ['/' + name + '.mjs', [name + '.mjs', 'text/javascript']])
 ]);
 
 const server = createServer(async (request, response) => {

@@ -26,3 +26,4 @@ vision_data/weights/
 *.exe
 *.dll
 *.dylib
+!/flute-loop.wav
