@@ -42,7 +42,7 @@ export function takeNotes(frames) {
   return notes;
 }
 
-export function setupFlow(score,source,krishna) {
+export function setupFlow(score) {
   const get=id=>document.getElementById(id);
   const panel=get('flow'), cut=get('flow-cut'), result=get('flow-result');
   const canvas=get('flow-chart');
@@ -60,7 +60,13 @@ export function setupFlow(score,source,krishna) {
     ctx.fillStyle="#ffffff";ctx.fillRect(Math.min(takeCanvas.width-2,x(+cut.value)),0,2,100);
   }
   let frames=[],start,offset=0,duration=0;
-  const overlay=get('overlay'), reference=new Image();
+  let armedAt,onset,anchor=0;
+  let openingFrames=[];
+  function disarm(){
+    armedAt=onset=undefined;
+    openingFrames=[];
+  }
+  const overlay=get('overlay');
   let spectra=[];
   const layer=document.createElement('canvas');layer.height=84;layer.width=1200;
   const ink=layer.getContext('2d');
@@ -103,32 +109,23 @@ export function setupFlow(score,source,krishna) {
     const stretch=Math.max(.1,Number(get('align-scale').value)||1);
     const span=Math.max(song.duration,(spectra.at(-1)?.[0]||0)*stretch+shift);
     const px=w/span;
-    if(source()===krishna && reference.naturalWidth){
-      // Shift each section of the source spectrum to its arranged register.
-      let from=0,delta=song.notes[0][2]-krishna.notes[0][2];
-      function strip(end){
-        if(end>from)ctx.drawImage(reference,from*20,0,(end-from)*20,84,from*px,-delta*h/84,(end-from)*px,h);
-        from=end;
-      }
-      song.notes.forEach(([a,b,k],i)=>{const d=k-krishna.notes[i][2];if(d!==delta){strip(a);delta=d;}});
-      strip(song.duration);
-    }else{
-      ctx.fillStyle='#559bff';
-      for(const [a,b,k] of song.notes)ctx.fillRect(a*px,(59-k)*h/84,(b-a)*px,3);
-    }
+    ctx.fillStyle='#559bff';
+    for(const [a,b,k] of song.notes)ctx.fillRect(a*px,(59-k)*h/84,(b-a)*px,3);
     ctx.globalCompositeOperation='lighter';
     ctx.drawImage(layer,shift*px,0,layer.width*.05*stretch*px,h);
     ctx.globalCompositeOperation='source-over';
   }
-  reference.onload=repaint;reference.src='/reference-spectrum.png';
+
   get('align-offset').oninput=get('align-scale').oninput=repaint;
   document.addEventListener('spectrum-frame',({detail})=>{
     if(start===undefined)return;
-    const t=offset+(performance.now()-start)/1000; spectra.push([t,detail]);plotColumn(t,detail);repaint();
+    const t=anchor+(detail.at-start)/1000;
+    if(detail.at<start)return;
+    spectra.push([t,detail.rows]);plotColumn(t,detail.rows);repaint();
   });
   function reset() {
     hint.textContent="";spectra=[];ink.clearRect(0,0,layer.width,84);repaint();
-    start=undefined;frames=[];duration=offset=0;
+    disarm();start=undefined;frames=[];duration=offset=0;
     cut.value=cut.max=0;get('cut-time').textContent='0.0 s';
     get('flow-start').disabled=false;get('flow-finish').disabled=get('flow-retry').disabled=true;
     result.textContent='';showCut();
@@ -136,19 +133,31 @@ export function setupFlow(score,source,krishna) {
   }
   function begin(replace) {
     if (get('mic').textContent!=='Stop microphone') {result.textContent='Start the microphone below first.';return;}
+    if(!replace){
+      get('align-offset').value=0;
+      get('align-scale').value=1;
+      reset();
+    }
     offset=replace?Number(cut.value):0;
     frames=replace?frames.filter(([t])=>t<offset):[];
     spectra=replace?spectra.filter(([t])=>t<offset):[];
     ink.clearRect(Math.round(offset*20),0,layer.width,84);
-    start=performance.now();
+    disarm();
+    armedAt=performance.now();
+    anchor=replace?offset:(score().notes[0]?.[0]??0);
     get('flow-start').disabled=get('flow-retry').disabled=true;
     get('flow-finish').disabled=false;
-    result.textContent='Listening. Finish when you reach the end.';
+    result.textContent='Ready. Play your first note to start the take.';
   }
   function finish() {
+    if(armedAt!==undefined){
+      disarm();duration=offset;
+      if(!frames.length){reset();result.textContent='No pitched note captured.';return;}
+      start=performance.now();anchor=offset;
+    }
     if(start===undefined)return;
     hint.textContent='Hover or tap the spectrum to check your pitch.';
-    duration=offset+(performance.now()-start)/1000;start=undefined;
+    duration=anchor+(performance.now()-start)/1000;start=undefined;
     cut.max=cut.value=duration;cut.oninput();
     get('flow-start').disabled=get('flow-retry').disabled=false;
     get('flow-finish').disabled=true;
@@ -172,7 +181,17 @@ export function setupFlow(score,source,krishna) {
     }));
   }
   document.addEventListener('pitch-frame',({detail})=>{
-    if(start!==undefined && detail.at>=start) frames.push([offset+(detail.at-start)/1000,detail.position]);
+    if(armedAt!==undefined){
+      if(detail.at<armedAt)return;
+      if(!Number.isFinite(detail.position)){onset=undefined;openingFrames=[];return;}
+      onset??=detail.at;
+      openingFrames.push([anchor+(detail.at-onset)/1000,detail.position]);
+      if(detail.at-onset<40)return;
+      start=onset;frames.push(...openingFrames);disarm();
+      result.textContent='Recording. Finish when you reach the end.';
+      return;
+    }
+    if(start!==undefined && detail.at>=start) frames.push([anchor+(detail.at-start)/1000,detail.position]);
   });
   document.addEventListener('mic-stopped',finish);
   get('flow-start').onclick=()=>begin(false);

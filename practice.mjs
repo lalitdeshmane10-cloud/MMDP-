@@ -208,13 +208,19 @@ function pause() {
   stopTone();
   play.textContent = position >= score.duration ? 'Play again' : position ? 'Resume' : 'Start practice';
 }
-let fluteSample;
+let fluteSample, echo;
 async function audioReady() {
   if (!audio) {
     audio = new AudioContext();
     output = audio.createGain();
     output.gain.value = Number(get('volume').value) * .24;
     output.connect(audio.destination);
+    echo=audio.createDelay();
+    echo.delayTime.value=.125;
+    const damping=audio.createBiquadFilter(), wet=audio.createGain();
+    damping.type='lowpass';damping.frequency.value=2400;wet.gain.value=.17;
+    echo.connect(damping).connect(wet).connect(output);
+    wet.connect(echo);
   }
   await audio.resume();
   if (!fluteSample && voice.value==='generated' && enabled('reference-audio')) {
@@ -271,17 +277,24 @@ get('loop').onclick = () => {
     jump(loopStart);
   }
 };
+let lastFluteEnd=-Infinity,lastFluteHz;
 function sound(hz,duration,type) {
   const t = audio.currentTime;
   if(type==='flute' && fluteSample){
     const source=audio.createBufferSource(),gain=audio.createGain();
     source.buffer=fluteSample;source.loop=true;
+    const connected=lastFluteHz && Math.abs(t-lastFluteEnd)<.04 && hz!==lastFluteHz;
+    const bend=connected?Math.max(-90,Math.min(90,1200*Math.log2(lastFluteHz/hz))):-14;
     source.playbackRate.value=hz/1266.6015625;
+    source.detune.setValueAtTime(bend,t);
+    source.detune.linearRampToValueAtTime(0,t+Math.min(.045,duration*.32));
+    lastFluteEnd=t+duration;lastFluteHz=hz;
+    const attack=connected?.018:.055;
     gain.gain.setValueAtTime(.001,t);
-    gain.gain.linearRampToValueAtTime(.78,t+Math.min(.045,duration/2));
+    gain.gain.linearRampToValueAtTime(.78,t+Math.min(attack,duration/2));
     gain.gain.setTargetAtTime(.60,t+duration*.6,.08);
     gain.gain.setTargetAtTime(.001,t+duration,.016);
-    source.connect(gain).connect(output);source.start();source.stop(t+duration+.08);
+    source.connect(gain).connect(output);gain.connect(echo);source.start();source.stop(t+duration+.08);
     source.onended=()=>{source.disconnect();gain.disconnect();};return source;
   }
   const oscillator = audio.createOscillator();
@@ -301,6 +314,7 @@ function sound(hz,duration,type) {
   envelope.gain.linearRampToValueAtTime(1,t+Math.min(duration/2,type === "flute" ? .035 : .012));
   envelope.gain.setTargetAtTime(0,t+Math.max(.012,duration-.025),.01);
   oscillator.connect(envelope).connect(output);
+  if(type==='flute')envelope.connect(echo);
   oscillator.start(t);
   oscillator.stop(t+duration+.025);
   oscillator.onended = () => { oscillator.disconnect(); envelope.disconnect(); };
@@ -454,7 +468,7 @@ document.addEventListener('keydown',event=>{
   if (event.key.toLowerCase()==='m') get('metronome').click();
 });
 addEventListener('pagehide',()=>{cancelAnimationFrame(animation);pause();if(audio) void audio.close();});
-const flow = setupFlow(() => score,()=>songs[Number(song.value)],krishna);
+const flow = setupFlow(() => score);
 setupImport(item => {
   songs.push(item);
   loadSongs(songs.length-1);

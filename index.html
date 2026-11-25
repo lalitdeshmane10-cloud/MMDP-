@@ -37,6 +37,8 @@
 
 <details><summary>Import a recording as Sargam</summary><form id="import-form">
 <label>Audio recording<input id="music-file" type="file" accept="audio/*" required></label>
+<label>Recording type<select id="mix-type"><option value="mix">Song with accompaniment</option><option value="solo">Isolated melody</option></select></label><label>Part to follow<select id="lead-part"><option value="lead">Main melody</option><option value="vocal">Singer</option><option value="flute">Flute</option></select></label>
+<label>From (seconds)<input id="part-from" type="number" min="0" step="any" value="0"></label><label>Until (seconds)<input id="part-until" type="number" min="0" step="any" placeholder="End of song"></label>
 <label>Recording’s Sa<select id="source-sa"><option value="auto">Estimate from melody</option></select></label>
 <button id="convert">Transcribe melody</button><p id="import-status" role="status"></p></form></details>
 <details><summary>Create a song</summary><form id="creator"><label>Title<input id="custom-title" required maxlength="80"></label><label>Tempo in BPM<input id="bpm" type="number" min="25" max="300" value="72" required></label><label>Sargam notation<textarea id="notation" required placeholder="S R G M | P D N S'"></textarea></label><p>Use r g d n for komal, m for tivra Ma, a dot for the lower register, an apostrophe for the upper register, and a dash to sustain. Use “rest” for a pause.</p><button>Save and select</button><p id="creator-status" role="status"></p></form></details>

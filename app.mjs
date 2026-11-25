@@ -146,13 +146,13 @@ mic.addEventListener('click', async () => {
     processor.port.onmessage = ({ data }) => analyze(data);
     const input=audio.createMediaStreamSource(session.stream);
     input.connect(processor);
-    const analyser=audio.createAnalyser();analyser.fftSize=4096;input.connect(analyser);
+    const analyser=audio.createAnalyser();analyser.fftSize=4096;analyser.smoothingTimeConstant=.15;input.connect(analyser);
     const bins=new Uint8Array(analyser.frequencyBinCount);
     session.spectrumTimer=setInterval(()=>{
       if(byId('flow').hidden)return;
       analyser.getByteFrequencyData(bins);
       const rows=Uint8Array.from({length:84},(_,i)=>bins[Math.round(sa*2**((59-i)/12)*4096/audio.sampleRate)]||0);
-      document.dispatchEvent(new CustomEvent('spectrum-frame',{detail:rows}));
+      document.dispatchEvent(new CustomEvent('spectrum-frame',{detail:{rows,at:performance.now()-500*analyser.fftSize/audio.sampleRate}}));
     },50);
     processor.connect(audio.destination);
     mic.textContent = 'Stop microphone';

@@ -27,3 +27,4 @@ vision_data/weights/
 *.dll
 *.dylib
 !/flute-loop.wav
+!/Ode to Joy - A flute demo.wav

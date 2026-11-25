@@ -15,7 +15,7 @@ const files = new Map([
   ['/record', ['record.html', 'text/html']],
   ['/record.html', ['record.html', 'text/html']],
   ['/style.css', ['style.css', 'text/css']],
-  ...['app', 'pitch', 'pitch-worklet', 'record', 'practice', 'krishna-score', 'practice-library','assistant','flow','import-song','melody-worker'].map((name) => ['/' + name + '.mjs', [name + '.mjs', 'text/javascript']])
+  ...['app', 'pitch', 'pitch-worklet', 'record', 'practice', 'krishna-score', 'practice-library','phir-se-parts','assistant','flow','import-song','melody-worker'].map((name) => ['/' + name + '.mjs', [name + '.mjs', 'text/javascript']])
 ]);
 
 const server = createServer(async (request, response) => {
